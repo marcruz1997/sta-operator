@@ -1,0 +1,176 @@
+# Concessões de cluster (CRB com label breakglass.acme.io/grant=true).
+# Roles permitidas: cluster-admin, cluster-status, cluster-reader.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: breakglass-grants
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["clusterrolebindings"]
+  matchConditions:
+    - name: only-grants
+      expression: "has(object.metadata.labels) && ('breakglass.acme.io/grant' in object.metadata.labels) && object.metadata.labels['breakglass.acme.io/grant'] == 'true'"
+  variables:
+    - name: ann
+      expression: "has(object.metadata.annotations) ? object.metadata.annotations : {}"
+  validations:
+    - expression: "request.operation == 'CREATE'"
+      message: "concessões são imutáveis; crie uma nova solicitação"
+    - expression: "object.metadata.name.startsWith('breakglass-grant-')"
+      message: "nome de concessão inválido"
+    - expression: "object.roleRef.kind == 'ClusterRole' && object.roleRef.name in ['cluster-admin', 'cluster-status', 'cluster-reader']"
+      message: "role de cluster não permitida para concessão"
+    - expression: "size(object.subjects) == 1 && object.subjects[0].kind == 'User'"
+      message: "a concessão deve ter exatamente um usuário"
+    - expression: "['requested-by', 'approved-by', 'ticket', 'reason', 'duration', 'request-id', 'expires-at', 'role'].all(k, ('breakglass.acme.io/' + k) in variables.ann)"
+      message: "anotações obrigatórias ausentes"
+    - expression: "variables.ann['breakglass.acme.io/role'] == object.roleRef.name"
+      message: "a role da concessão não bate com a anotação"
+    - expression: "object.subjects[0].name == variables.ann['breakglass.acme.io/requested-by']"
+      message: "o usuário da concessão deve ser o solicitante"
+    - expression: "variables.ann['breakglass.acme.io/approved-by'] != variables.ann['breakglass.acme.io/requested-by']"
+      message: "o aprovador não pode ser o solicitante"
+    - expression: "variables.ann['breakglass.acme.io/duration'].matches('^[0-9]{1,4}m$') && int(variables.ann['breakglass.acme.io/duration'].replace('m', '')) >= 5 && int(variables.ann['breakglass.acme.io/duration'].replace('m', '')) <= 1440"
+      message: "duração deve ficar entre 5m e 1440m (24 h)"
+    - expression: "variables.ann['breakglass.acme.io/ticket'].matches('^[A-Za-z0-9][A-Za-z0-9-]{2,31}$')"
+      message: "ticket inválido"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: breakglass-grants
+spec:
+  policyName: breakglass-grants
+  validationActions: ["Deny", "Audit"]
+---
+# Concessões de projeto (RoleBinding com label breakglass.acme.io/grant=true).
+# Roles permitidas: view, edit, admin. Nunca em namespaces openshift* ou no do próprio break-glass.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: breakglass-grants-ns
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["rolebindings"]
+  matchConditions:
+    - name: only-grants
+      expression: "has(object.metadata.labels) && ('breakglass.acme.io/grant' in object.metadata.labels) && object.metadata.labels['breakglass.acme.io/grant'] == 'true'"
+  variables:
+    - name: ann
+      expression: "has(object.metadata.annotations) ? object.metadata.annotations : {}"
+  validations:
+    - expression: "request.operation == 'CREATE'"
+      message: "concessões são imutáveis; crie uma nova solicitação"
+    - expression: "object.metadata.name.startsWith('breakglass-grant-')"
+      message: "nome de concessão inválido"
+    - expression: "object.roleRef.kind == 'ClusterRole' && object.roleRef.name in ['view', 'edit', 'admin']"
+      message: "role de projeto não permitida para concessão"
+    - expression: "!object.metadata.namespace.startsWith('openshift') && !object.metadata.namespace.startsWith('kube-') && object.metadata.namespace != 'breakglass-system'"
+      message: "concessão de projeto não pode ser criada em namespace de sistema"
+    - expression: "size(object.subjects) == 1 && object.subjects[0].kind == 'User'"
+      message: "a concessão deve ter exatamente um usuário"
+    - expression: "['requested-by', 'approved-by', 'ticket', 'reason', 'duration', 'request-id', 'expires-at', 'role'].all(k, ('breakglass.acme.io/' + k) in variables.ann)"
+      message: "anotações obrigatórias ausentes"
+    - expression: "variables.ann['breakglass.acme.io/role'] == object.roleRef.name"
+      message: "a role da concessão não bate com a anotação"
+    - expression: "object.subjects[0].name == variables.ann['breakglass.acme.io/requested-by']"
+      message: "o usuário da concessão deve ser o solicitante"
+    - expression: "variables.ann['breakglass.acme.io/approved-by'] != variables.ann['breakglass.acme.io/requested-by']"
+      message: "o aprovador não pode ser o solicitante"
+    - expression: "variables.ann['breakglass.acme.io/duration'].matches('^[0-9]{1,4}m$') && int(variables.ann['breakglass.acme.io/duration'].replace('m', '')) >= 5 && int(variables.ann['breakglass.acme.io/duration'].replace('m', '')) <= 1440"
+      message: "duração deve ficar entre 5m e 1440m (24 h)"
+    - expression: "variables.ann['breakglass.acme.io/ticket'].matches('^[A-Za-z0-9][A-Za-z0-9-]{2,31}$')"
+      message: "ticket inválido"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: breakglass-grants-ns
+spec:
+  policyName: breakglass-grants-ns
+  validationActions: ["Deny", "Audit"]
+---
+# Protege os objetos permanentes do break-glass contra remoção, exceto pelo expirer.
+# Limitação: quem tem permissão para apagar esta própria VAP consegue contornar.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: breakglass-protect
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["DELETE"]
+        resources: ["clusterrolebindings", "clusterroles"]
+  matchConditions:
+    - name: permanent-objects
+      expression: "oldObject.metadata.name in ['breakglass-cluster-admin', 'breakglass-impersonate']"
+  validations:
+    - expression: "request.userInfo.username == 'system:serviceaccount:breakglass-system:breakglass-expirer'"
+      message: "objeto permanente do break-glass protegido"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: breakglass-protect
+spec:
+  policyName: breakglass-protect
+  validationActions: ["Deny", "Audit"]
+---
+# Trava o cluster-admin temporário (membro de breakglass-temp-cluster-admins).
+# Mesmo sendo cluster-admin, ele NÃO consegue: alterar objetos breakglass-* (grupo, concessões, VAPs),
+# criar ou alterar ClusterRoles, nem criar bindings para cluster-admin.
+# Limitação: não bloqueia leitura. RBAC não esconde nada de quem já é cluster-admin.
+# Limitação: quem é cluster-admin permanente (não está no grupo) não é afetado por esta VAP.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: breakglass-temp-guard
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["clusterrolebindings", "rolebindings", "clusterroles"]
+      - apiGroups: ["user.openshift.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["groups"]
+      - apiGroups: ["admissionregistration.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["validatingadmissionpolicies", "validatingadmissionpolicybindings"]
+  variables:
+    - name: temp
+      expression: "request.userInfo.groups.exists(g, g == 'breakglass-temp-cluster-admins')"
+    - name: obj
+      expression: "request.operation == 'DELETE' ? oldObject : object"
+  validations:
+    - expression: "!variables.temp || !variables.obj.metadata.name.startsWith('breakglass')"
+      message: "cluster-admin temporário não pode alterar objetos do break-glass"
+    - expression: "!variables.temp || request.resource.resource != 'clusterroles' || request.operation == 'DELETE'"
+      message: "cluster-admin temporário não pode criar ou alterar ClusterRoles"
+    - expression: "!variables.temp || request.operation == 'DELETE' || !(request.resource.resource in ['clusterrolebindings', 'rolebindings']) || object.roleRef.name != 'cluster-admin'"
+      message: "cluster-admin temporário não pode conceder cluster-admin"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: breakglass-temp-guard
+spec:
+  policyName: breakglass-temp-guard
+  validationActions: ["Deny", "Audit"]

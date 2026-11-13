@@ -1,0 +1,139 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: breakglass-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: breakglass-portal
+  namespace: breakglass-system
+  annotations:
+    serviceaccounts.openshift.io/oauth-redirectreference.panel: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"breakglass-panel"}}'
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: breakglass-panel-ns
+  namespace: breakglass-system
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - create
+  - update
+- apiGroups:
+  - breakglass.acme.io
+  resources:
+  - breakglassgrants
+  verbs:
+  - get
+  - list
+  - create
+  - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: breakglass-panel-ns
+  namespace: breakglass-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: breakglass-panel-ns
+subjects:
+- kind: ServiceAccount
+  name: breakglass-portal
+  namespace: breakglass-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: breakglass-panel-cluster
+rules:
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterrolebindings
+  - rolebindings
+  verbs:
+  - create
+  - get
+  - list
+  - delete
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterroles
+  resourceNames:
+  - cluster-admin
+  - cluster-status
+  - cluster-reader
+  - view
+  - edit
+  - admin
+  verbs:
+  - bind
+- apiGroups:
+  - user.openshift.io
+  resources:
+  - groups
+  resourceNames:
+  - breakglass-temp-cluster-admins
+  verbs:
+  - get
+  - update
+- apiGroups:
+  - ''
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - loki.grafana.com
+  resources:
+  - audit
+  resourceNames:
+  - logs
+  verbs:
+  - get
+- nonResourceURLs:
+  - /api/logs/v1/audit/*
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: breakglass-panel-cluster
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: breakglass-panel-cluster
+subjects:
+- kind: ServiceAccount
+  name: breakglass-portal
+  namespace: breakglass-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: breakglass-panel-auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: breakglass-portal
+  namespace: breakglass-system
+---
+apiVersion: user.openshift.io/v1
+kind: Group
+metadata:
+  name: breakglass-temp-cluster-admins

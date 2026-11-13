@@ -1,0 +1,136 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  name: sta-operator.v0.1.0
+  namespace: placeholder
+  annotations:
+    capabilities: Basic Install
+    categories: Security
+    containerImage: quay.io/marcruz/sta-operator:v0.1.0
+    createdAt: "2026-11-12T00:00:00Z"
+    description: Acesso privilegiado temporário e auditado para OpenShift (não oficial, sem suporte da Red Hat).
+spec:
+  icon:
+    - mediatype: image/svg+xml
+      base64data: PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4MCA4MCIgd2lkdGg9IjgwIiBoZWlnaHQ9IjgwIj4KICA8cmVjdCB3aWR0aD0iODAiIGhlaWdodD0iODAiIHJ4PSIxNiIgZmlsbD0iI2M5MTkwYiIvPgogIDxwYXRoIGQ9Ik00MCAxNCBMNjIgMjIgVjQwIEM2MiA1NSA1MiA2NCA0MCA2OCBDMjggNjQgMTggNTUgMTggNDAgVjIyIFoiIGZpbGw9IiNmZmZmZmYiLz4KICA8cmVjdCB4PSIzMiIgeT0iMzgiIHdpZHRoPSIxNiIgaGVpZ2h0PSIxMyIgcng9IjIiIGZpbGw9IiNjOTE5MGIiLz4KICA8cGF0aCBkPSJNMzUgMzggVjM0IEE1IDUgMCAwIDEgNDUgMzQgVjM4IiBmaWxsPSJub25lIiBzdHJva2U9IiNjOTE5MGIiIHN0cm9rZS13aWR0aD0iMyIvPgo8L3N2Zz4K
+  displayName: STA - Supervised Temporary Access
+  version: 0.1.0
+  description: |
+    STA (Supervised Temporary Access) concede acesso privilegiado temporário no OpenShift,
+    com aprovação, prazo máximo de 24 horas, revogação imediata e histórico.
+
+    AVISO: ferramenta não oficial. Não é produto da Red Hat e não tem suporte oficial da Red Hat.
+  provider:
+    name: Comunidade (não oficial)
+  maturity: alpha
+  maintainers:
+    - name: Equipe de plataforma
+  keywords: [break-glass, rbac, acesso temporário, auditoria]
+  installModes:
+    - type: OwnNamespace
+      supported: false
+    - type: SingleNamespace
+      supported: false
+    - type: MultiNamespace
+      supported: false
+    - type: AllNamespaces
+      supported: true
+  customresourcedefinitions:
+    owned: []
+  install:
+    strategy: deployment
+    spec:
+      clusterPermissions:
+        - serviceAccountName: sta-operator-controller
+          rules:
+            - apiGroups: ["breakglass.acme.io"]
+              resources: ["breakglassgrants"]
+              verbs: ["get", "list", "watch", "update", "patch", "create", "delete"]
+            - apiGroups: ["breakglass.acme.io"]
+              resources: ["breakglassgrants/status", "breakglassgrants/finalizers"]
+              verbs: ["get", "update", "patch"]
+            - apiGroups: ["rbac.authorization.k8s.io"]
+              resources: ["clusterrolebindings"]
+              verbs: ["create", "get", "list", "watch", "delete"]
+            - apiGroups: ["rbac.authorization.k8s.io"]
+              resources: ["rolebindings"]
+              verbs: ["create", "get", "list", "watch", "delete"]
+            - apiGroups: ["rbac.authorization.k8s.io"]
+              resources: ["clusterroles"]
+              resourceNames: ["cluster-admin", "cluster-status", "cluster-reader", "view", "edit", "admin"]
+              verbs: ["bind"]
+            - apiGroups: ["user.openshift.io"]
+              resources: ["groups"]
+              resourceNames: ["breakglass-temp-cluster-admins"]
+              verbs: ["get", "update"]
+            - apiGroups: ["apiextensions.k8s.io"]
+              resources: ["customresourcedefinitions"]
+              verbs: ["get", "list", "watch"]
+            - apiGroups: [""]
+              resources: ["namespaces"]
+              verbs: ["get", "list", "watch", "create"]
+            - apiGroups: [""]
+              resources: ["events"]
+              verbs: ["create", "patch"]
+            # Instalação do painel: o operator cria e mantém os recursos abaixo
+            - apiGroups: [""]
+              resources: ["namespaces", "serviceaccounts", "services", "secrets", "configmaps", "persistentvolumeclaims"]
+              verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+            - apiGroups: ["apps"]
+              resources: ["deployments"]
+              verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+            - apiGroups: ["route.openshift.io"]
+              resources: ["routes"]
+              verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+            - apiGroups: ["rbac.authorization.k8s.io"]
+              resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+              verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "escalate", "bind"]
+            - apiGroups: ["admissionregistration.k8s.io"]
+              resources: ["validatingadmissionpolicies", "validatingadmissionpolicybindings"]
+              verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+            - apiGroups: ["user.openshift.io"]
+              resources: ["groups"]
+              verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+            - apiGroups: ["breakglass.acme.io"]
+              resources: ["breakglasspanels", "breakglasspanels/status", "breakglasspanels/finalizers"]
+              verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+            - apiGroups: ["console.openshift.io"]
+              resources: ["consolelinks"]
+              verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+            - nonResourceURLs: ["/api/logs/v1/audit/*"]
+              verbs: ["get"]
+      deployments:
+        - name: sta-operator-controller
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: sta-operator-controller
+            template:
+              metadata:
+                labels:
+                  app: sta-operator-controller
+              spec:
+                serviceAccountName: sta-operator-controller
+                containers:
+                  - name: controller
+                    image: quay.io/marcruz/sta-operator:v0.1.0
+                    imagePullPolicy: Always
+                    env:
+                      - name: BG_NAMESPACE
+                        value: breakglass-system
+                      - name: BG_DOMAIN
+                        value: breakglass.acme.io
+                      - name: PANEL_IMAGE
+                        value: quay.io/marcruz/sta-panel:v0.1.0
+                    resources:
+                      requests:
+                        cpu: 50m
+                        memory: 128Mi
+                      limits:
+                        memory: 256Mi
+                    securityContext:
+                      allowPrivilegeEscalation: false
+                      capabilities:
+                        drop: ["ALL"]
+                      runAsNonRoot: true

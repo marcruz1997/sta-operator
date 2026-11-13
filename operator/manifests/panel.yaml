@@ -1,0 +1,127 @@
+# Armazenamento persistente: histórico e auditoria (SQLite). Não é apagado pelo redeploy.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: breakglass-audit
+  namespace: breakglass-system
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: breakglass-panel
+  namespace: breakglass-system
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: breakglass-panel-tls
+spec:
+  selector:
+    app: breakglass-panel
+  ports:
+    - name: https
+      port: 8443
+      targetPort: https
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: breakglass-panel
+  namespace: breakglass-system
+  annotations:
+    haproxy.router.openshift.io/timeout: 120s
+spec:
+  to:
+    kind: Service
+    name: breakglass-panel
+  port:
+    targetPort: https
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: breakglass-panel
+  namespace: breakglass-system
+  labels:
+    app: breakglass-panel
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # o PVC é RWO: não pode haver dois pods ao mesmo tempo
+  selector:
+    matchLabels:
+      app: breakglass-panel
+  template:
+    metadata:
+      labels:
+        app: breakglass-panel
+    spec:
+      serviceAccountName: breakglass-portal
+      containers:
+        - name: app
+          image: __PANEL_IMAGE__
+          imagePullPolicy: Always
+          env:
+            - name: BG_NAMESPACE
+              value: breakglass-system
+            - name: BG_DB
+              value: /data/audit.db
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: service-ca
+              mountPath: /etc/loki-ca
+              readOnly: true
+        - name: oauth-proxy
+          image: registry.redhat.io/openshift4/ose-oauth-proxy-rhel9:v4.17
+          args:
+            - --https-address=:8443
+            - --provider=openshift
+            - --openshift-service-account=breakglass-portal
+            - --upstream=http://127.0.0.1:8080
+            - --tls-cert=/etc/tls/private/tls.crt
+            - --tls-key=/etc/tls/private/tls.key
+            - --cookie-secret=$(COOKIE_SECRET)
+            - --cookie-expire=8h
+            - --pass-access-token=true
+            - --skip-auth-regex=^/(healthz|static/.*)?$
+            - --email-domain=*
+            - --request-logging=true
+          env:
+            - name: COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: breakglass-panel-cookie
+                  key: cookie_secret
+          ports:
+            - name: https
+              containerPort: 8443
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: https
+              scheme: HTTPS
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/tls/private
+              readOnly: true
+      volumes:
+        - name: tls
+          secret:
+            secretName: breakglass-panel-tls
+        - name: data
+          persistentVolumeClaim:
+            claimName: breakglass-audit
+        - name: service-ca
+          configMap:
+            name: openshift-service-ca.crt
+            optional: true

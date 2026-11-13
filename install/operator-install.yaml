@@ -1,0 +1,28 @@
+# Instalação do STA pelo OLM.
+# O operator roda em openshift-operators (All namespaces) e cria o próprio namespace breakglass-system.
+# Também dá para instalar pela interface: OperatorHub > STA > Install (All namespaces).
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: sta-catalog
+  namespace: openshift-marketplace
+spec:
+  sourceType: grpc
+  displayName: STA (não oficial)
+  publisher: Equipe de plataforma
+  image: quay.io/marcruz/sta-index:latest
+  updateStrategy:
+    registryPoll:
+      interval: 30m
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: sta-operator
+  namespace: openshift-operators
+spec:
+  channel: alpha
+  name: sta-operator
+  source: sta-catalog
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic

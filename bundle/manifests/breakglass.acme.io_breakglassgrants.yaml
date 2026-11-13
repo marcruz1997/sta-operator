@@ -1,0 +1,74 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: breakglassgrants.breakglass.acme.io
+spec:
+  group: breakglass.acme.io
+  scope: Namespaced
+  names:
+    kind: BreakglassGrant
+    listKind: BreakglassGrantList
+    plural: breakglassgrants
+    singular: breakglassgrant
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Role
+          type: string
+          jsonPath: .spec.role
+        - name: Requester
+          type: string
+          jsonPath: .spec.requester
+        - name: Expires
+          type: string
+          jsonPath: .spec.expiresAt
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [requester, approver, role, ticket, reason, durationMinutes, expiresAt, requestId]
+              properties:
+                requester:
+                  type: string
+                approver:
+                  type: string
+                role:
+                  type: string
+                  enum: [cluster-admin, cluster-status, cluster-reader, view, edit, admin]
+                namespace:
+                  type: string
+                  description: Projeto da concessão (só para view, edit e admin)
+                ticket:
+                  type: string
+                reason:
+                  type: string
+                  maxLength: 500
+                durationMinutes:
+                  type: integer
+                  minimum: 5
+                  maximum: 1440
+                expiresAt:
+                  type: string
+                  format: date-time
+                requestId:
+                  type: string
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  description: Active, Expired ou Rejected
+                message:
+                  type: string
+                binding:
+                  type: string
